@@ -470,8 +470,10 @@ abstract contract Initializable {
     }
 }
 
-abstract contract Registry {
-    function canCreateEstate(address _landAddress, uint256[] memory landId, address caller) external view virtual;
+interface RegistryCheck {
+    function canCreateEstate(address _landAddress, uint256[] memory landId, address caller) external view;
+    function canCreateMajorUnit(address baseNFT, uint256 baseNFTID, address childNFT, bool hasSubUnit) external view;
+    function checkArea(uint256 area) external view;
 }
 
 pragma solidity ^0.8.0;
@@ -482,11 +484,22 @@ contract Comptroller is Initializable {
 
     address public estateNFT;
 
-    Registry public registry;
+    RegistryCheck public registry;
 
-    mapping(address => mapping(uint256 => uint256)) public getEstate;
+    struct Default {
+        address NFTContract;
+        uint256 tokenID;
+    }
 
-    function initialize(address _landNFT, address _estateNFT, Registry _registry) public initializer {
+    mapping(address => mapping(uint256 => Default)) public getChild;
+
+    mapping(address => mapping(uint256 => Default)) public getParent;
+
+    mapping(address => mapping(uint256 => uint256)) public getMajorUnit;
+
+    mapping(address => mapping(uint256 => bool)) public hasSubUnit;
+
+    function initialize(address _landNFT, address _estateNFT, RegistryCheck _registry) public initializer {
         landNFT = _landNFT;
         estateNFT = _estateNFT;
         registry  = _registry;
@@ -497,8 +510,21 @@ contract Comptroller is Initializable {
 
         for(uint i = 0; i <= landId.length; i++) {
             uint newEstate = IERC721(estateNFT).mint(tokenIPFSPath);
-            getEstate[_landAddress][landId[i]] = newEstate;
+            getChild[_landAddress][landId[i]] = Default(_landAddress, landId[i]);
+            getParent[estateNFT][newEstate] = Default(estateNFT, newEstate);
+            hasSubUnit[estateNFT][newEstate] = true;
         }
         
     } 
+
+    function createUnit(address baseNFT, uint256 baseNFTID, address childNFT, string memory tokenIPFSPath, bool subUnit, uint256 area) public {
+        registry.canCreateMajorUnit(baseNFT, baseNFTID, childNFT, subUnit);
+        // registry.checkArea(area); // Area part needs clarification
+        
+        uint newChild = IERC721(childNFT).mint(tokenIPFSPath);
+        hasSubUnit[childNFT][newChild] = subUnit;
+        getParent[childNFT][newChild] = Default(baseNFT, baseNFTID);
+        getChild[baseNFT][baseNFTID] = Default(childNFT, newChild);
+        
+    }
 }
